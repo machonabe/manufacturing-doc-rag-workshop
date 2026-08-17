@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # DBTITLE 1,03 ドキュメント抽出: 紹介
 # MAGIC %md
 # MAGIC # 03_extract_docs: Word/PPT/PDF/TIFF/CSV からのテキスト抽出
@@ -178,8 +182,23 @@ print(f"\n抽出完了: documents {len(doc_records)}件, media_assets {len(media
 # ==============================================================
 # documents テーブルへの追記（Excel分に非 Excel ドキュメントを追加）
 # ==============================================================
+from pyspark.sql.types import StructType, StructField, StringType, ArrayType
+
+# 空リストで型推論が失敗するため明示的にスキーマを指定
 if doc_records:
-    df_new_docs = spark.createDataFrame(doc_records)
+    docs_schema = StructType([
+        StructField("doc_id", StringType(), True),
+        StructField("file_name", StringType(), True),
+        StructField("file_path", StringType(), True),
+        StructField("doc_type", StringType(), True),
+        StructField("title", StringType(), True),
+        StructField("product_ids", ArrayType(StringType()), True),
+        StructField("spec_ids", ArrayType(StringType()), True),
+        StructField("keywords", ArrayType(StringType()), True),
+        StructField("summary", StringType(), True),
+        StructField("ingested_at", StringType(), True),
+    ])
+    df_new_docs = spark.createDataFrame(doc_records, schema=docs_schema)
     df_new_docs.write.mode("append").saveAsTable(FQ_DOCUMENTS)
     print(f"✅ {FQ_DOCUMENTS}: {len(doc_records)} 件追加")
 
