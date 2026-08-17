@@ -52,11 +52,22 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 
-# DBTITLE 1,スキーマ・Volume作成
+# DBTITLE 1,カタログ・スキーマ・Volume作成
 # ==============================================================
-# スキーマ・ Volume 作成
+# カタログ・スキーマ・ Volume 作成
 # ==============================================================
 # 製造業実務: プロジェクト開始時にデータ基盤を整備する工程に相当
+
+# カタログが存在しない場合は作成（Free Edition で workspace カタログが無いケースに対応）
+try:
+    spark.sql(f"USE CATALOG {CATALOG}")
+    print(f"✅ カタログ確認: {CATALOG}")
+except Exception:
+    print(f"⚠️ カタログ '{CATALOG}' が存在しないため作成します...")
+    spark.sql(f"CREATE CATALOG IF NOT EXISTS {CATALOG}")
+    spark.sql(f"USE CATALOG {CATALOG}")
+    print(f"✅ カタログ作成: {CATALOG}")
+
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.{VOLUME}")
 
