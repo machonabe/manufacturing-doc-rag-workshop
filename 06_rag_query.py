@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # DBTITLE 1,06 RAGクエリ: ゴール体験
 # MAGIC %md
 # MAGIC # 06_rag_query: 自然言語検索 → 仕様・図・波形の即時表示
@@ -20,7 +24,7 @@
 # COMMAND ----------
 
 # DBTITLE 1,ライブラリ・設定
-# MAGIC %pip install databricks-vectorsearch openai --quiet
+# MAGIC %pip install openai --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -34,7 +38,7 @@
 # ==============================================================
 # RAG 検索関数: 自然言語 → 検索 → 回答 → 図・波形表示
 # ==============================================================
-from databricks.vector_search.client import VectorSearchClient
+from databricks.sdk import WorkspaceClient
 import openai, os
 import matplotlib
 matplotlib.use('Agg')
@@ -43,7 +47,7 @@ from PIL import Image as PILImage
 import csv as csv_mod
 import numpy as np
 
-vsc = VectorSearchClient(disable_notice=True)
+w = WorkspaceClient()
 
 def answer(question: str, num_results: int = 5):
     """
@@ -56,15 +60,15 @@ def answer(question: str, num_results: int = 5):
     print(f"🔍 質問: {question}")
     print(f"{'='*60}")
     
-    # --- Step 1: Vector Search ---
+    # --- Step 1: Vector Search (databricks-sdk 使用) ---
     try:
-        idx = vsc.get_index(endpoint_name=VS_ENDPOINT_NAME, index_name=VS_INDEX_NAME)
-        results = idx.similarity_search(
-            query_text=question,
+        results = w.vector_search_indexes.query_index(
+            index_name=VS_INDEX_NAME,
             columns=["chunk_id", "doc_id", "content", "product_ids_str", "file_path"],
+            query_text=question,
             num_results=num_results
         )
-        hits = results.get('result', {}).get('data_array', [])
+        hits = results.result.data_array
         print(f"\n📚 検索ヒット: {len(hits)} 件")
     except Exception as e:
         print(f"\n⚠️ Vector Search エラー: {e}")
@@ -113,11 +117,20 @@ def answer(question: str, num_results: int = 5):
         print(f"\n💬 回答:")
         print(answer_text)
     except Exception as e:
-        print(f"\n⚠️ LLM エラー: {e}")
-        print("→ フォールバック: 検索結果をそのまま表示します")
-        print("\n検索結果:")
+        error_str = str(e)
+        if "guardrail" in error_str.lower():
+            # ガードレールの誤検知（製造業用語が暴力カテゴリとして誤判定される既知の問題）
+            print(f"\n⚠️ LLM ガードレール発動（製造業用語の誤検知）")
+            print("   → pay-per-token エンドポイントのコンテンツフィルタが")
+            print("     技術用語を誤ってブロックしました。")
+            print("   → 実運用では専用エンドポイントでガードレール設定を調整します。")
+        else:
+            print(f"\n⚠️ LLM エラー: {e}")
+        print("\n💬 フォールバック: 検索結果から関連情報を直接表示します")
+        print("-" * 40)
         for h in hits[:3]:
-            print(f"  ・{h[1]}: {h[2][:100]}...")
+            print(f"\n📄 {h[1]}:")
+            print(f"   {h[2][:200]}...")
     
     # --- Step 4: 出典ファイル・図・波形の表示 ---
     print(f"\n📁 出典ファイル:")
