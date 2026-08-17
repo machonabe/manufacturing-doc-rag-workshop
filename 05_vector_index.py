@@ -76,13 +76,13 @@ print(f"   ソーステーブル: {FQ_DOC_CHUNKS}")
 print(f"   埋め込みモデル: {EMBEDDING_ENDPOINT}")
 print(f"   プライマリキー: chunk_id")
 
-from databricks.sdk.service.vectorsearch import DeltaSyncVectorIndexSpecRequest, EmbeddingSourceColumn
+from databricks.sdk.service.vectorsearch import DeltaSyncVectorIndexSpecRequest, EmbeddingSourceColumn, PipelineType, VectorIndexType
 
 w.vector_search_indexes.create_index(
     name=VS_INDEX_NAME,
     endpoint_name=VS_ENDPOINT_NAME,
     primary_key="chunk_id",
-    index_type="DELTA_SYNC",
+    index_type=VectorIndexType.DELTA_SYNC,
     delta_sync_index_spec=DeltaSyncVectorIndexSpecRequest(
         source_table=FQ_DOC_CHUNKS,
         embedding_source_columns=[
@@ -91,7 +91,7 @@ w.vector_search_indexes.create_index(
                 embedding_model_endpoint_name=EMBEDDING_ENDPOINT
             )
         ],
-        pipeline_type="TRIGGERED",
+        pipeline_type=PipelineType.TRIGGERED,
         columns_to_sync=["chunk_id", "doc_id", "content", "product_ids_str", "doc_type", "file_path"]
     )
 )
