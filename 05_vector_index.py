@@ -127,18 +127,14 @@ wait_for_index(VS_INDEX_NAME)
 # ==============================================================
 # 検証: テストクエリで検索動作確認
 # ==============================================================
-from databricks.vector_search.client import VectorSearchClient
-
-vsc = VectorSearchClient(disable_notice=True)
-idx = vsc.get_index(endpoint_name=VS_ENDPOINT_NAME, index_name=VS_INDEX_NAME)
-
-# テスト検索
-results = idx.similarity_search(
-    query_text="SNS-100 の動作温度範囲",
+# databricks-sdk の query_index を使用（追加パッケージ不要）
+results = w.vector_search_indexes.query_index(
+    index_name=VS_INDEX_NAME,
     columns=["chunk_id", "doc_id", "product_ids_str", "doc_type"],
+    query_text="SNS-100 の動作温度範囲",
     num_results=3
 )
-hits = results.get('result', {}).get('data_array', [])
+hits = results.result.data_array
 print(f"テストクエリ: 'SNS-100 の動作温度範囲'")
 print(f"  ヒット数: {len(hits)}")
 for h in hits:
