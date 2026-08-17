@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # DBTITLE 1,04 メタデータ構築: 紹介
 # MAGIC %md
 # MAGIC # 04_build_metadata: チャンク化と検索用テーブル作成
@@ -125,6 +129,12 @@ df_chunks.write.saveAsTable(FQ_DOC_CHUNKS)
 spark.sql(f"""
     ALTER TABLE {FQ_DOC_CHUNKS} 
     SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
+""")
+
+# chunk_id を NOT NULL に変更（PK 制約の前提条件）
+spark.sql(f"""
+    ALTER TABLE {FQ_DOC_CHUNKS}
+    ALTER COLUMN chunk_id SET NOT NULL
 """)
 
 # プライマリキー制約追加
