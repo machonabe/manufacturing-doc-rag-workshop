@@ -165,3 +165,188 @@
 # MAGIC 1. **Knowledge Assistant でエージェント化** — 有償ワークスペースでは Agent Bricks を使ってノーコードでデプロイ可能
 # MAGIC 2. **Box MCP / SharePoint 経由の自動取り込み** — 実データを Volume に自動インジェスト
 # MAGIC 3. **Lakeflow SDP でパイプライン化** — 新規ドキュメント追加時に自動でインデックス更新
+
+# COMMAND ----------
+
+# DBTITLE 1,使用機能の解説
+# MAGIC %md
+# MAGIC ---
+# MAGIC
+# MAGIC # 📚 使用している機能の解説
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC ## 1. Unity Catalog
+# MAGIC
+# MAGIC ### 仕組み
+# MAGIC Unity Catalog は Databricks の統合データガバナンスレイヤーです。カタログ > スキーマ > テーブル/Volume の 3 階層構造で全データアセットを一元管理します。
+# MAGIC
+# MAGIC ### 本ハンズオンでの役割
+# MAGIC - **Volume**: 生ファイル（Excel/Word/PDF/TIFF）の格納先。クラウドストレージ上のファイルを SQL パス（`/Volumes/catalog/schema/volume/`）でアクセス可能
+# MAGIC - **テーブル**: 抽出したメタデータを Delta 形式で構造化保存
+# MAGIC - **アクセス制御**: テーブル・ Volume 単位で権限管理が可能
+# MAGIC
+# MAGIC ### 利点
+# MAGIC - ファイルと構造化データを同じガバナンスで管理
+# MAGIC - リニージ（誰がいつ何を更新したか）の自動追跡
+# MAGIC - ワークスペースをまたいだデータ共有が可能
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC ## 2. Delta Lake（Change Data Feed + Primary Key）
+# MAGIC
+# MAGIC ### 仕組み
+# MAGIC Delta Lake は ACID トランザクション対応のオープンソースストレージレイヤーです。Parquet + トランザクションログでバージョニングとタイムトラベルを実現します。
+# MAGIC
+# MAGIC ### Change Data Feed (CDF)
+# MAGIC テーブルへの変更（INSERT/UPDATE/DELETE）を別のフォルダに記録する機能です。Vector Search の Delta Sync インデックスは、この CDF を読み取って「どの行が変更されたか」を検知し、変更分だけをインデックスに反映します。
+# MAGIC
+# MAGIC ### Primary Key (PK)
+# MAGIC Vector Search が各ベクトルを一意に識別するために必要です。チャンクが更新されたとき、PK で古いベクトルを特定して置き換えます。
+# MAGIC
+# MAGIC ### 利点
+# MAGIC - 全件再インデックス不要 → 差分同期で高速・低コスト
+# MAGIC - データの信頼性（ACID）を保証しながら検索インデックスを最新に保つ
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC ## 3. Databricks Vector Search
+# MAGIC
+# MAGIC ### 仕組み
+# MAGIC Vector Search はテキストを高次元ベクトル（数値の配列）に変換し、「意味の近さ」で検索するマネージドサービスです。
+# MAGIC
+# MAGIC ```
+# MAGIC テキスト → Embedding Model → [0.12, -0.34, 0.56, ...] (1024次元)
+# MAGIC                                          ↓
+# MAGIC                                ANN (Approximate Nearest Neighbor) 検索
+# MAGIC                                          ↓
+# MAGIC                                意味的に近いドキュメントを返却
+# MAGIC ```
+# MAGIC
+# MAGIC ### コンポーネント
+# MAGIC | コンポーネント | 役割 |
+# MAGIC |---|---|
+# MAGIC | **エンドポイント** | ベクトルインデックスをホストするコンピュートリソース |
+# MAGIC | **Delta Sync インデックス** | Delta テーブルの変更を自動でベクトル化・同期 |
+# MAGIC | **マネージドエンベディング** | Databricks がテキスト→ベクトル変換を自動実行 |
+# MAGIC
+# MAGIC ### 利点
+# MAGIC - キーワード一致ではなく「意味」で検索（「過渡応答」で検索 → 「ステップ応答時間 210ms」のドキュメントがヒット）
+# MAGIC - Delta テーブルと自動同期 → ドキュメント追加時に再インデックス不要
+# MAGIC - 埋め込みモデルの管理不要（マネージド）
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC ## 4. Foundation Model APIs（Pay-per-token）
+# MAGIC
+# MAGIC ### 仕組み
+# MAGIC Databricks が提供する基盤モデルを、トークン単位の従量課金で利用できるサービスです。インフラの構築・管理が不要で、API を呼ぶだけで利用できます。
+# MAGIC
+# MAGIC ### 本ハンズオンで使用するモデル
+# MAGIC | モデル | 用途 | 特徴 |
+# MAGIC |---|---|---|
+# MAGIC | `databricks-gte-large-en` | テキストのベクトル化 | 1024次元, 8192トークンコンテキスト |
+# MAGIC | `databricks-meta-llama-3-3-70b-instruct` | 回答生成 | 70Bパラメータ, 日本語対応 |
+# MAGIC
+# MAGIC ### 利点
+# MAGIC - GPU クラスターのプロビジョニング不要
+# MAGIC - OpenAI 互換 API（`/serving-endpoints`）で既存コードの移行が容易
+# MAGIC - データが Databricks 環境外に出ない（セキュリティ）
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC ## 5. RAG（Retrieval-Augmented Generation）
+# MAGIC
+# MAGIC ### 仕組み
+# MAGIC LLM 単体では「知らないこと」に答えられません。RAG は「まず関連ドキュメントを検索し、それを文脈として LLM に渡す」パターンです。
+# MAGIC
+# MAGIC ```
+# MAGIC ユーザー質問
+# MAGIC     │
+# MAGIC     ▼
+# MAGIC ┌───────────────────────┐
+# MAGIC │ 1. Retrieval            │  ← Vector Search で関連チャンクを取得
+# MAGIC │    (セマンティック検索) │
+# MAGIC └───────────┬───────────┘
+# MAGIC             │
+# MAGIC             ▼
+# MAGIC ┌───────────────────────┐
+# MAGIC │ 2. Augmentation         │  ← 検索結果をプロンプトに埋め込み
+# MAGIC │    (コンテキスト付与)  │
+# MAGIC └───────────┬───────────┘
+# MAGIC             │
+# MAGIC             ▼
+# MAGIC ┌───────────────────────┐
+# MAGIC │ 3. Generation           │  ← LLM が出典付きで回答生成
+# MAGIC │    (回答生成)         │
+# MAGIC └───────────────────────┘
+# MAGIC ```
+# MAGIC
+# MAGIC ### 利点
+# MAGIC - LLM のハルシネーション（嘲り）を防止 — 実際のドキュメントに基づく回答のみ
+# MAGIC - 出典を明示できる — 「どのファイルのどの部分から」が追跡可能
+# MAGIC - モデルのファインチューニング不要 — ドキュメントを追加するだけで知識が拡張
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC ## 6. Genie Space
+# MAGIC
+# MAGIC ### 仕組み
+# MAGIC Genie Space は自然言語を SQL に変換して実行するツールです。登録されたテーブルのスキーマを理解し、ユーザーの質問に対して適切な SQL を自動生成・実行します。
+# MAGIC
+# MAGIC ```
+# MAGIC 「製品ごとのドキュメント数は？」
+# MAGIC     │
+# MAGIC     ▼  Genie が SQL を生成
+# MAGIC     SELECT product_id, COUNT(*) FROM documents GROUP BY product_id
+# MAGIC     │
+# MAGIC     ▼  SQL Warehouse で実行
+# MAGIC     結果テーブルを表示
+# MAGIC ```
+# MAGIC
+# MAGIC ### RAG（06）との使い分け
+# MAGIC | 観点 | RAG (06) | Genie Space (07) |
+# MAGIC |---|---|---|
+# MAGIC | 得意なこと | ドキュメントの中身を読む | データを集計・分析 |
+# MAGIC | 検索方式 | セマンティック（意味） | SQL（完全一致・集計） |
+# MAGIC | 質問例 | 「過渡応答の試験結果は？」 | 「製品ごとの試験件数は？」 |
+# MAGIC | 出力 | 自然言語の回答 + 図・波形 | テーブル・グラフ |
+# MAGIC
+# MAGIC ### 利点
+# MAGIC - 非エンジニア（品質管理部門等）が SQL を知らなくてもデータ探索可能
+# MAGIC - テーブルを登録するだけでセットアップ完了
+# MAGIC - SQL が見えるので「何をやったか」が透明
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC ## 7. ドキュメント処理ライブラリ
+# MAGIC
+# MAGIC ### 各ライブラリの役割
+# MAGIC | ライブラリ | 対象 | 何ができるか |
+# MAGIC |---|---|---|
+# MAGIC | `openpyxl` | Excel (.xlsx) | セル値・書式（取消線）・埋め込み画像・結合セルの読み取り |
+# MAGIC | `python-docx` | Word (.docx) | 段落テキスト・表・スタイルの抽出 |
+# MAGIC | `python-pptx` | PowerPoint (.pptx) | スライド内テキストフレームの抽出 |
+# MAGIC | `pypdf` | PDF (.pdf) | ページ単位のテキスト抽出 |
+# MAGIC | `Pillow` | TIFF/PNG | 画像のリサイズ・サムネイル生成 |
+# MAGIC
+# MAGIC ### 製造業でこれらが重要な理由
+# MAGIC 製造業の技術ドキュメントは「フォーマットが部署・時期・担当者によってバラバラ」という現実があります。  
+# MAGIC 完璧な構造化よりも「どの製品・どの試験に紐付くか」というメタデータを正規表現で抽出し、検索可能にすることが最優先です。
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC ## 8. チャンク化の設計思想
+# MAGIC
+# MAGIC ### なぜチャンク化が必要か
+# MAGIC 埋め込みモデルには入力トークン数の上限があります（`databricks-gte-large-en` は 8192 トークン）。また、長いテキストをそのままベクトル化すると意味が「平均化」されて検索精度が低下します。
+# MAGIC
+# MAGIC ### 本ハンズオンの設計
+# MAGIC - **チャンクサイズ**: 800文字（製造業の試験項目単位に近い粒度）
+# MAGIC - **メタデータ埋め込み**: 各チャンクの先頭に `[製品ID: SNS-200] [種別: excel]` を付与
+# MAGIC - **Excel はシート単位**: 「測定結果」シートと「総合試験」シートを別チャンクに
+# MAGIC
+# MAGIC ### 利点
+# MAGIC - 検索結果から即座に「どの製品のどのファイルか」が分かる
+# MAGIC - メタデータによるフィルタリングが可能（「SNS-200 のドキュメントだけ」など）
+# MAGIC - 関連する図・波形へのナビゲーションが容易
