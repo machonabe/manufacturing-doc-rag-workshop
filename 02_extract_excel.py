@@ -232,6 +232,8 @@ print(f"  excel_cells: {len(cell_records)} 件")
 # ==============================================================
 # Delta テーブルへの書き込み
 # ==============================================================
+from pyspark.sql.types import StructType, StructField, StringType, BooleanType, ArrayType
+
 # media_assets
 if media_records:
     df_media = spark.createDataFrame(media_records)
@@ -245,8 +247,22 @@ if cell_records:
     print(f"✅ {FQ_EXCEL_CELLS}: {df_cells.count()} 件")
 
 # documents (Excel分)
+# 注: product_ids/spec_ids/keywords が空リストの場合に型推論が失敗するため
+#     明示的にスキーマを指定する
 if doc_records:
-    df_docs = spark.createDataFrame(doc_records)
+    docs_schema = StructType([
+        StructField("doc_id", StringType(), True),
+        StructField("file_name", StringType(), True),
+        StructField("file_path", StringType(), True),
+        StructField("doc_type", StringType(), True),
+        StructField("title", StringType(), True),
+        StructField("product_ids", ArrayType(StringType()), True),
+        StructField("spec_ids", ArrayType(StringType()), True),
+        StructField("keywords", ArrayType(StringType()), True),
+        StructField("summary", StringType(), True),
+        StructField("ingested_at", StringType(), True),
+    ])
+    df_docs = spark.createDataFrame(doc_records, schema=docs_schema)
     df_docs.write.mode("overwrite").saveAsTable(FQ_DOCUMENTS)
     print(f"✅ {FQ_DOCUMENTS}: {df_docs.count()} 件")
 
