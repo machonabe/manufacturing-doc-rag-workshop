@@ -197,5 +197,6 @@ display(spark.sql(f"""
 
 # アサーション
 chunk_count = spark.sql(f"SELECT COUNT(*) as cnt FROM {FQ_DOC_CHUNKS}").first().cnt
-assert chunk_count >= 20, f"チャンク数不足: {chunk_count}"
+min_chunks = 5 if LITE_MODE else 20
+assert chunk_count >= min_chunks, f"チャンク数不足: {chunk_count} (最低 {min_chunks} 必要)"
 print(f"\n✅ 04_build_metadata 完了: {chunk_count} チャンク作成済み")
