@@ -37,9 +37,33 @@
 import os, re
 from pyspark.sql import Row
 
-# documents テーブルから全ドキュメントを取得
-docs_df = spark.sql(f"SELECT * FROM {FQ_DOCUMENTS}").collect()
-print(f"処理対象ドキュメント: {len(docs_df)} 件")
+# documents テーブルからドキュメントを取得
+all_docs = spark.sql(f"SELECT * FROM {FQ_DOCUMENTS}").collect()
+
+if LITE_MODE:
+    # Free Edition 高速化: デモ質問に回答できる最小セットだけチャンク化
+    # デモ質問:
+    #   Q1: "SNS-200 の過渡応答の試験結果と波形を見せて"
+    #   Q2: "SNS-100 の動作温度範囲は？"
+    #   Q3: "取り消し線で修正された測定値を含むファイルは？"
+    # 必要: Word仕様書(SNS-100, SNS-200) + Excel試験成績書(2ファイル)
+    LITE_DOC_TYPES = {"word", "excel"}
+    LITE_PRODUCTS = {"SNS-100", "SNS-200"}
+    
+    docs_df = []
+    for doc in all_docs:
+        if doc.doc_type not in LITE_DOC_TYPES:
+            continue
+        # 製品IDが SNS-100 または SNS-200 を含むもののみ
+        pids = set(doc.product_ids) if doc.product_ids else set()
+        if pids & LITE_PRODUCTS:
+            docs_df.append(doc)
+    print(f"🚀 LITE_MODE: デモに必要なドキュメントのみチャンク化")
+    print(f"   全ドキュメント: {len(all_docs)} 件 → 対象: {len(docs_df)} 件")
+    print(f"   (インデックス作成時間を大幅に短縮します)")
+else:
+    docs_df = all_docs
+    print(f"処理対象ドキュメント: {len(docs_df)} 件")
 
 # excel_cells からシート単位のテキストを取得
 excel_text_by_doc = {}

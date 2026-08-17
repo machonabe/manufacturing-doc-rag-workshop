@@ -85,6 +85,14 @@ VS_INDEX_NAME = f"{CATALOG}.{SCHEMA}.{TABLE_DOC_CHUNKS}_index"
 # False: ルールベース（正規表現+固定辞書）で代替
 USE_AI_FUNCTIONS = True
 
+# ==============================================================
+# Free Edition 高速化モード
+# ==============================================================
+# True: デモ質問に必要な最小限のドキュメントだけチャンク化
+#       → インデックス作成が約 3–5分で完了
+# False: 全ドキュメントをチャンク化（通常ワークスペース向け）
+LITE_MODE = True
+
 # COMMAND ----------
 
 # DBTITLE 1,設定値一覧表示
@@ -114,5 +122,6 @@ print(f"  VS_ENDPOINT_NAME:   {VS_ENDPOINT_NAME}")
 print(f"  VS_INDEX_NAME:      {VS_INDEX_NAME}")
 print(f"  ---")
 print(f"  USE_AI_FUNCTIONS:   {USE_AI_FUNCTIONS}")
+print(f"  LITE_MODE:          {LITE_MODE}")
 print("=" * 60)
 print("✅ 設定読み込み完了")
