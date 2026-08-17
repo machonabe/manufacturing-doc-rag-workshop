@@ -103,7 +103,7 @@ print("✅ インデックス作成リクエスト送信完了")
 # ==============================================================
 # インデックスが READY になるまで待機
 # ==============================================================
-def wait_for_index(index_name, timeout_min=20):
+def wait_for_index(index_name, timeout_min=40):
     """VS インデックスが検索可能になるまで待機"""
     start = time.time()
     while (time.time() - start) < timeout_min * 60:
