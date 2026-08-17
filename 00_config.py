@@ -23,8 +23,7 @@
 # ==============================================================
 # Free Edition: そのまま使用（workspace カタログは最初から存在）
 # 有償ワークスペース: 以下を書き換え (例: CATALOG = "main")
-# CATALOG = "workspace"  # <-- Free Edition ではこちらを使用
-CATALOG = "twatanabe"  # <-- テスト環境用（公開時は workspace に戻す）
+CATALOG = "workspace"  # Free Edition ではこのまま使用
 SCHEMA = "mfg_doc_search"
 VOLUME = "docs"
 
