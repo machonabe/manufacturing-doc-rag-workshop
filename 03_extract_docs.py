@@ -27,6 +27,11 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,ライブラリインストール
+# MAGIC %pip install python-docx python-pptx pypdf Pillow --quiet
+
+# COMMAND ----------
+
 # DBTITLE 1,ドキュメント抽出メインロジック
 # ==============================================================
 # Word / PPT / PDF / TIFF / CSV からのテキスト抽出
