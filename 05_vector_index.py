@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # DBTITLE 1,05 Vector Search インデックス: 紹介
 # MAGIC %md
 # MAGIC # 05_vector_index: Vector Search インデックス作成
@@ -72,22 +76,24 @@ print(f"   ソーステーブル: {FQ_DOC_CHUNKS}")
 print(f"   埋め込みモデル: {EMBEDDING_ENDPOINT}")
 print(f"   プライマリキー: chunk_id")
 
+from databricks.sdk.service.vectorsearch import DeltaSyncVectorIndexSpecRequest, EmbeddingSourceColumn
+
 w.vector_search_indexes.create_index(
     name=VS_INDEX_NAME,
     endpoint_name=VS_ENDPOINT_NAME,
     primary_key="chunk_id",
     index_type="DELTA_SYNC",
-    delta_sync_index_spec={
-        "source_table": FQ_DOC_CHUNKS,
-        "embedding_source_columns": [
-            {
-                "name": "content",
-                "embedding_model_endpoint_name": EMBEDDING_ENDPOINT
-            }
+    delta_sync_index_spec=DeltaSyncVectorIndexSpecRequest(
+        source_table=FQ_DOC_CHUNKS,
+        embedding_source_columns=[
+            EmbeddingSourceColumn(
+                name="content",
+                embedding_model_endpoint_name=EMBEDDING_ENDPOINT
+            )
         ],
-        "pipeline_type": "TRIGGERED",
-        "columns_to_sync": ["chunk_id", "doc_id", "content", "product_ids_str", "doc_type", "file_path"]
-    }
+        pipeline_type="TRIGGERED",
+        columns_to_sync=["chunk_id", "doc_id", "content", "product_ids_str", "doc_type", "file_path"]
+    )
 )
 print("✅ インデックス作成リクエスト送信完了")
 
