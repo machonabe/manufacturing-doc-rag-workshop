@@ -39,7 +39,7 @@
 # RAG 検索関数: 自然言語 → 検索 → 回答 → 図・波形表示
 # ==============================================================
 from databricks.sdk import WorkspaceClient
-import openai, os
+import openai, os, re
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -48,6 +48,58 @@ import csv as csv_mod
 import numpy as np
 
 w = WorkspaceClient()
+
+def extract_direct_answer(question: str, hits):
+    """
+    仕様値のような事実質問は、LLM に頼らず検索ヒットから直接抽出する。
+    Free Edition のガードレール誤検知時でも確実に答えられるようにする。
+    """
+    q = question.lower()
+    patterns = []
+    field_name = None
+
+    if "動作温度" in question or "温度範囲" in question or "operating temp" in q:
+        field_name = "動作温度範囲"
+        patterns = [
+            r"動作温度(?:範囲)?[:：]\s*([-+]?\d+\s*~\s*[-+]?\d+\s*°?C)",
+            r"Operating Temp[:：]\s*([-+]?\d+\s*~\s*[-+]?\d+\s*°?C)",
+            r"Temp\s+([-+]?\d+\s*~\s*[-+]?\d+\s*°?C)",
+        ]
+    elif "供給電圧" in question or "電圧" in question or "supply voltage" in q:
+        field_name = "供給電圧"
+        patterns = [
+            r"供給電圧[:：]\s*([0-9.]+\s*~\s*[0-9.]+V)",
+            r"Supply Voltage[:：]\s*([0-9.]+\s*~\s*[0-9.]+V)",
+        ]
+    elif "応答時間" in question or "response time" in q:
+        field_name = "応答時間"
+        patterns = [
+            r"応答時間[:：]\s*([0-9.]+\s*ms)",
+            r"Response Time[:：]\s*([0-9.]+\s*ms)",
+        ]
+    elif "精度" in question or "accuracy" in q:
+        field_name = "精度"
+        patterns = [
+            r"精度[:：]\s*([^\n]+)",
+            r"Accuracy[:：]\s*([^\n]+)",
+        ]
+
+    if not patterns:
+        return None
+
+    for h in hits:
+        doc_id = h[1]
+        content = h[2] or ""
+        for p in patterns:
+            m = re.search(p, content, flags=re.IGNORECASE)
+            if m:
+                value = m.group(1).strip()
+                return {
+                    "field": field_name,
+                    "value": value,
+                    "doc_id": doc_id,
+                }
+    return None
 
 def answer(question: str, num_results: int = 5):
     """
@@ -78,6 +130,13 @@ def answer(question: str, num_results: int = 5):
     if not hits:
         print("検索結果がありません。")
         return
+
+    # 仕様値のような事実質問は検索ヒットから直接抽出
+    direct_answer = extract_direct_answer(question, hits)
+    if direct_answer:
+        print(f"\n💬 直接回答:")
+        print(f"{direct_answer['field']}: {direct_answer['value']}")
+        print(f"出典: {direct_answer['doc_id']}")
     
     # --- Step 2: 関連メディアアセットの収集 ---
     hit_doc_ids = list(set([h[1] for h in hits]))  # doc_id
@@ -95,42 +154,44 @@ def answer(question: str, num_results: int = 5):
         media_rows = []
     
     # --- Step 3: LLM による回答生成 ---
-    context = "\n---\n".join([h[2][:500] for h in hits])  # content
-    sources = ", ".join(hit_doc_ids[:5])
-    
-    try:
-        # OpenAI互換 APIで pay-per-token LLMを呼び出し
-        client = openai.OpenAI(
-            api_key=dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get(),
-            base_url=f"{dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiUrl().get()}/serving-endpoints"
-        )
-        response = client.chat.completions.create(
-            model=LLM_ENDPOINT,
-            messages=[
-                {"role": "system", "content": "あなたは製造業の技術ドキュメントに基づいて回答するアシスタントです。日本語で回答し、出典ファイル名を明記してください。"},
-                {"role": "user", "content": f"質問: {question}\n\n参考情報:\n{context}\n\n出典: {sources}"}
-            ],
-            max_tokens=500,
-            temperature=0.1
-        )
-        answer_text = response.choices[0].message.content
-        print(f"\n💬 回答:")
-        print(answer_text)
-    except Exception as e:
-        error_str = str(e)
-        if "guardrail" in error_str.lower():
-            # ガードレールの誤検知（製造業用語が暴力カテゴリとして誤判定される既知の問題）
-            print(f"\n⚠️ LLM ガードレール発動（製造業用語の誤検知）")
-            print("   → pay-per-token エンドポイントのコンテンツフィルタが")
-            print("     技術用語を誤ってブロックしました。")
-            print("   → 実運用では専用エンドポイントでガードレール設定を調整します。")
-        else:
-            print(f"\n⚠️ LLM エラー: {e}")
-        print("\n💬 フォールバック: 検索結果から関連情報を直接表示します")
-        print("-" * 40)
-        for h in hits[:3]:
-            print(f"\n📄 {h[1]}:")
-            print(f"   {h[2][:200]}...")
+    # 直接回答できた場合は LLM をスキップして、誤検知や余計な要約を避ける
+    if not direct_answer:
+        context = "\n---\n".join([h[2][:500] for h in hits])  # content
+        sources = ", ".join(hit_doc_ids[:5])
+        
+        try:
+            # OpenAI互換 APIで pay-per-token LLMを呼び出し
+            client = openai.OpenAI(
+                api_key=dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get(),
+                base_url=f"{dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiUrl().get()}/serving-endpoints"
+            )
+            response = client.chat.completions.create(
+                model=LLM_ENDPOINT,
+                messages=[
+                    {"role": "system", "content": "あなたは製造業の技術ドキュメントに基づいて回答するアシスタントです。日本語で回答し、出典ファイル名を明記してください。"},
+                    {"role": "user", "content": f"質問: {question}\n\n参考情報:\n{context}\n\n出典: {sources}"}
+                ],
+                max_tokens=500,
+                temperature=0.1
+            )
+            answer_text = response.choices[0].message.content
+            print(f"\n💬 回答:")
+            print(answer_text)
+        except Exception as e:
+            error_str = str(e)
+            if "guardrail" in error_str.lower():
+                # ガードレールの誤検知（製造業用語が暴力カテゴリとして誤判定される既知の問題）
+                print(f"\n⚠️ LLM ガードレール発動（製造業用語の誤検知）")
+                print("   → pay-per-token エンドポイントのコンテンツフィルタが")
+                print("     技術用語を誤ってブロックしました。")
+                print("   → 実運用では専用エンドポイントでガードレール設定を調整します。")
+            else:
+                print(f"\n⚠️ LLM エラー: {e}")
+            print("\n💬 フォールバック: 検索結果から関連情報を直接表示します")
+            print("-" * 40)
+            for h in hits[:3]:
+                print(f"\n📄 {h[1]}:")
+                print(f"   {h[2][:200]}...")
     
     # --- Step 4: 出典ファイル・図・波形の表示 ---
     print(f"\n📁 出典ファイル:")
