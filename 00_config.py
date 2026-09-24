@@ -77,6 +77,54 @@ VS_INDEX_NAME = f"{CATALOG}.{SCHEMA}.{TABLE_DOC_CHUNKS}_index"
 
 # COMMAND ----------
 
+# DBTITLE 1,代替検索バックエンド設定（有償ワークスペース向け）
+# ==============================================================
+# 代替検索バックエンド（AI Search 以外のパターン）
+# ==============================================================
+# 検索バックエンドの切り替え:
+#   "vector_search"      : 05/06 ノートブック（Vector Search — オリジナル）
+#   "lakebase"           : 05b/06b ノートブック（Lakebase pgvector）
+#   "lakebase_agent_mem" : 06c ノートブック（Lakebase + Agent Memory）
+#   "genie_content"      : 07b ノートブック（Genie + content search）
+#
+# ※ Lakebase / Agent Memory / Genie content search は
+#   有償ワークスペースが前提です（Free Edition では動作しません）。
+SEARCH_MODE = "lakebase"
+
+# ==============================================================
+# Lakebase 設定（05b / 06b / 06c で使用）
+# ==============================================================
+# Lakebase Autoscaling プロジェクト（なければ 05b が自動作成）
+LAKEBASE_PROJECT_ID = "mfg-handson-lakebase"
+LAKEBASE_BRANCH_ID = "production"
+LAKEBASE_ENDPOINT_ID = "primary"
+LAKEBASE_PG_DATABASE = "databricks_postgres"
+
+# Postgres 側のスキーマ・テーブル名（[A-Za-z0-9_] のみ使用可）
+LAKEBASE_PG_SCHEMA = "mfg_search"
+LAKEBASE_TABLE_CHUNKS = "doc_chunks"
+LAKEBASE_TABLE_MEMORY = "agent_memory"
+
+# 埋め込みベクトル次元数（databricks-gte-large-en / bge-large-en は 1024）
+EMBEDDING_DIM = 1024
+
+# Lakebase リソースパス（REST API 用）
+LAKEBASE_BRANCH_PATH = f"projects/{LAKEBASE_PROJECT_ID}/branches/{LAKEBASE_BRANCH_ID}"
+LAKEBASE_ENDPOINT_PATH = f"{LAKEBASE_BRANCH_PATH}/endpoints/{LAKEBASE_ENDPOINT_ID}"
+
+# ==============================================================
+# Agent Memory 設定（06c で使用）
+# ==============================================================
+# UC メモリストア名（CATALOG.SCHEMA 配下に作成される UC セキュアブル）
+MEMORY_STORE_NAME = "mfg_agent_memory"
+MEMORY_STORE_FULL_NAME = f"{CATALOG}.{SCHEMA}.{MEMORY_STORE_NAME}"
+
+# エージェントが使うモデル（Responses API 対応モデル）
+# ワークスペースで利用可能なものに変更してください
+AGENT_MODEL = "databricks-gpt-5-2"
+
+# COMMAND ----------
+
 # DBTITLE 1,機能フラグ
 # ==============================================================
 # 機能フラグ
@@ -120,6 +168,12 @@ print(f"  EMBEDDING_ENDPOINT: {EMBEDDING_ENDPOINT}")
 print(f"  LLM_ENDPOINT:       {LLM_ENDPOINT}")
 print(f"  VS_ENDPOINT_NAME:   {VS_ENDPOINT_NAME}")
 print(f"  VS_INDEX_NAME:      {VS_INDEX_NAME}")
+print(f"  ---")
+print(f"  SEARCH_MODE:        {SEARCH_MODE}")
+print(f"  LAKEBASE_PROJECT:   {LAKEBASE_PROJECT_ID}")
+print(f"  LAKEBASE_ENDPOINT:  {LAKEBASE_ENDPOINT_PATH}")
+print(f"  LAKEBASE_PG_TABLE:  {LAKEBASE_PG_SCHEMA}.{LAKEBASE_TABLE_CHUNKS}")
+print(f"  EMBEDDING_DIM:      {EMBEDDING_DIM}")
 print(f"  ---")
 print(f"  USE_AI_FUNCTIONS:   {USE_AI_FUNCTIONS}")
 print(f"  LITE_MODE:          {LITE_MODE}")

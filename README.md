@@ -22,7 +22,7 @@
 
 | # | ファイル | 内容 | 所要時間 |
 |---|---|---|---|
-| 00 | `00_config.py` | 全体共通設定（カタログ・スキーマ・テーブル名） | - |
+| 00 | `00_config.py` | 全体共通設定（カタログ・スキーマ・テーブル名・検索バックエンド） | - |
 | 01 | `01_setup_and_sample_data.py` | 環境セットアップ・合成データ生成・VSエンドポイント事前作成 | 10分 |
 | 02 | `02_extract_excel.py` | Excel 試験成績書からのメタデータ抽出 | 20分 |
 | 03 | `03_extract_docs.py` | Word/PPT/PDF/TIFF/CSV からのテキスト抽出 | 10分 |
@@ -31,6 +31,21 @@
 | 06 | `06_rag_query.py` | 自然言語検索 → 図・波形表示（ゴール体験） | 15分 |
 | 07 | `07_genie_space.py` | Genie Space で構造化データ探索 | 5分 |
 | 99 | `99_cleanup.py` | リソースクリーンアップ | - |
+
+### 🔀 代替検索バックエンド（有償ワークスペース向け）
+
+AI Search (Vector Search) を使わないパターンを、切り替え可能な別ノートブックとして用意しています。
+**01〜04 は共通** で、05 以降を目的のパターンに読み替えて実行してください。
+
+| パターン | ファイル | 内容 | 前提 |
+|---|---|---|---|
+| A. Lakebase Search | `05b_lakebase_index.py` → `06b_rag_query_lakebase.py` | Lakebase (マネージド Postgres) 上で pgvector / `lakebase_vector` によるベクトル検索 + BM25 ハイブリッド検索 (RRF) | Lakebase 利用可能な WS |
+| B. Lakebase + Agent Memory | （05b 実行後）`06c_agent_memory_rag.py` | UC メモリストアで会話の記憶を保持するエージェント型 RAG。「その製品の…」という照応を解決 | 同上 + `CREATE MEMORY STORE` 権限 |
+| C. Genie Agent + content search | `07b_genie_content_search.py` | RAG を自前構築せず、Genie Agent にボリュームをアタッチして生ファイルを直接読ませる（Beta・UI 設定あり） | プレビュー「Analyze Files in Volumes with Genie Agents」有効 |
+| クリーンアップ | `99b_cleanup_alt.py` | 代替パターンのリソース削除 | - |
+
+切り替えの目安として `00_config.py` の `SEARCH_MODE` にパターン名を記録できます
+（`"vector_search"` / `"lakebase"` / `"lakebase_agent_mem"` / `"genie_content"`）。
 
 ## ⏱️ 効率的な進め方
 
